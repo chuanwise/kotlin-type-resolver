@@ -73,7 +73,7 @@ assertEquals(createResolvableType<List<String>>(), baz1.parameters.last().type)
 
 class Foo2<T> {
     class Bar2<T> {
-        fun baz2(t: List<String>): T = error("Not implemented")
+        fun baz2(t: List<T>): T = error("Not implemented")
     }
 }
 
