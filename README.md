@@ -34,9 +34,9 @@ assertEquals(String::class, kClass)
 assertEquals(typeOf<String>(), kType)
 
 // 支持协变逆变等泛型类型的处理。因为 List<in T>，所以 List<String> 可以赋值给 List<Any>。
-val list = createResolvableType<List<String>>()
-val listAny = createResolvableType<List<Any>>()
-assertTrue(list.isAssignableFrom(listAny))
+val stringList = createResolvableType<List<String>>()
+val anyList = createResolvableType<List<Any>>()
+assertTrue(anyList.isAssignableFrom(stringList))
 ```
 
 支持嵌套类相关处理：
@@ -81,6 +81,5 @@ class Foo2<T> {
 val bar2 = createResolvableType<Foo2<String>.Bar2<Int>>()
 val baz2 = bar2.memberFunctions.single { it.rawFunction.name == "baz2" }
 assertEquals(createResolvableType<Int>(), baz2.returnType)
-assertEquals(createResolvableType<List<String>>(), baz2.parameters.last().type)
+assertEquals(createResolvableType<List<Int>>(), baz2.parameters.last().type)
 ```
-
