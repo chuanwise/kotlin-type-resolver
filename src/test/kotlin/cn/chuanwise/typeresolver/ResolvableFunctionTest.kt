@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test
 import kotlin.reflect.jvm.kotlinFunction
 
 private fun foo(): Nothing = error("Not implemented")
+private fun <T> bar(): T & Any = error("Not implemented")
 
 class ResolvableFunctionTest {
     class Foo<T> {
@@ -67,5 +68,6 @@ class ResolvableFunctionTest {
     @Test
     fun testOuterFunction() {
         val foo = createResolvableFunction(::foo)
+        val bar = createResolvableFunction<Any>(::bar)
     }
 }

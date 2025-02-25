@@ -121,4 +121,32 @@ class ResolvableTypeTest {
 
         assertEquals(string, comparableArgument)
     }
+
+    class Foo3<T> {
+        inner class Foo3 {
+            inner class Foo3<T, U> {
+                inner class Foo3 {
+                    fun <G> foo(t: Map<Map<U, List<Map<T, String>>>, U>): Pair<T, Map<U, G>> = error("Not implemented")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun testComplexMemberClass() {
+        val foo3 = createResolvableType<Foo3<Float>.Foo3.Foo3<Double, String>>()
+        val innerFoo3 = foo3.memberTypes.single()
+
+        val fooFun = innerFoo3.memberFunctions.single { it.rawFunction.name == "foo" }
+        val fooFunT = fooFun.parameters.last()
+        assertEquals(createResolvableType<Map<Map<String, List<Map<Double, String>>>, String>>(), fooFunT.type)
+
+        val fooFunReturnType = fooFun.returnType!!
+        assertEquals(createResolvableType<Double>(), fooFunReturnType.getTypeArgument<Pair<*, *>>(0)?.type)
+
+        assertEquals(
+            createResolvableType<String>(),
+            fooFunReturnType.getTypeArgument<Pair<*, *>>(1)?.type?.getTypeArgument<Map<*, *>>("K")?.type
+        )
+    }
 }

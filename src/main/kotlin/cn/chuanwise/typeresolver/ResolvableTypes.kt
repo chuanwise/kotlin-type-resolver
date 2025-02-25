@@ -14,21 +14,21 @@
  * limitations under the License.
  */
 
+@file:JvmName("ResolvableTypes")
+
 package cn.chuanwise.typeresolver
 
-import kotlin.reflect.KParameter
-
-/**
- * 可解析函数的参数。
- *
- * @author Chuanwise
- */
-interface ResolvableFunctionParameter {
-    val name: String?
-    val index: Int
-
-    val rawParameter: KParameter
-
-    val type: ResolvableType<*>?
-    val isResolved: Boolean
+inline fun <reified T> ResolvableType<*>.getTypeArgument(index: Int): ResolvableTypeArgument? {
+    return getTypeArgument(T::class, index)
 }
+inline fun <reified T> ResolvableType<*>.getTypeArgumentOrFail(index: Int): ResolvableTypeArgument? {
+    return getTypeArgumentOrFail(T::class, index)
+}
+
+inline fun <reified T> ResolvableType<*>.getTypeArgument(name: String): ResolvableTypeArgument? {
+    return getTypeArgument(T::class, name)
+}
+inline fun <reified T> ResolvableType<*>.getTypeArgumentOrFail(name: String): ResolvableTypeArgument? {
+    return getTypeArgumentOrFail(T::class, name)
+}
+

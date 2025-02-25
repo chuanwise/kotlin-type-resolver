@@ -35,6 +35,8 @@ internal class TypeResolverImpl : TypeResolver {
     }
 
     override fun resolve(type: KType): ResolvableType<*> {
+        typeCache[type]?.let { return it }
+
         return createResolvableTypeBuilder(type, this)
             .build()
             .apply {

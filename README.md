@@ -9,8 +9,6 @@
 使用 `createResolvableType<T>()` 创建一个可解析类型，通过它进行各种操作。
 
 ```kt
-import kotlin.reflect.typeOf
-
 // 使用 `createResolvableType<T>()` 创建一个可解析类型。
 val string = createResolvableType<String>()
 assertFalse(string.isNullable)
@@ -82,4 +80,32 @@ val bar2 = createResolvableType<Foo2<String>.Bar2<Int>>()
 val baz2 = bar2.memberFunctions.single { it.rawFunction.name == "baz2" }
 assertEquals(createResolvableType<Int>(), baz2.returnType)
 assertEquals(createResolvableType<List<Int>>(), baz2.parameters.last().type)
+
+// 如果类型更为复杂，例如包含多次嵌套，也可以正确推导。
+class Foo3<T> {
+    inner class Foo3 {
+        inner class Foo3<T, U> {  // foo3
+            inner class Foo3 {    // inner foo3
+                fun <G> foo(t: Map<Map<U, List<Map<T, String>>>, U>): Pair<T, Map<U, G>> = error("Not implemented")
+            }
+        }
+    }
+}
+
+val foo3 = createResolvableType<Foo3<Float>.Foo3.Foo3<Double, String>>()
+val innerFoo3 = foo3.memberTypes.single()
+
+val fooFun = innerFoo3.memberFunctions.single { it.rawFunction.name == "foo" }
+val fooFunT = fooFun.parameters.last()
+assertEquals(createResolvableType<Map<Map<String, List<Map<Double, String>>>, String>>(), fooFunT.type)
+
+// 尽管因为函数 foo 的泛型参数 G 无法推导，但仍然可以获取其他部分的类型。
+val fooFunReturnType = fooFun.returnType    // Pair<T, Map<U, G>>, 其中 G 无法知悉
+assertEquals(createResolvableType<Double>(), fooFunReturnType?.getTypeArgument<Pair<*, *>>(0)?.type)
+
+// 获取结果 Pair 的第二个泛型参数类型，即 Map<U, G>，其中 U 为 String，G 无法知悉
+assertEquals(
+    createResolvableType<String>(),
+    fooFunReturnType?.getTypeArgument<Pair<*, *>>(1)?.type?.getTypeArgument<Map<*, *>>("K")?.type
+)
 ```

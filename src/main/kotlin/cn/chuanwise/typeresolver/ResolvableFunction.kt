@@ -23,6 +23,15 @@ import kotlin.reflect.KType
 import kotlin.reflect.KTypeParameter
 import kotlin.reflect.KTypeProjection
 
+/**
+ * 可解析函数。
+ *
+ * 通过 [createResolvableFunction] 或 [ResolvableType.memberFunctions] 获取，
+ * 可用于推导函数的相关类型，包括返回值类型、参数类型等。
+ *
+ * @param T 函数的返回类型。
+ * @author Chuanwise
+ */
 interface ResolvableFunction<T> : ResolvableTypeArgumentOwner {
     /**
      * 如果该函数在类中定义，则返回类类型。
@@ -103,7 +112,7 @@ internal class ResolvableFunctionImpl<T>(
             var typeArgument: ResolvableTypeArgument? = null
             var currentType = this@ResolvableFunctionImpl.ownerType
             while (currentType != null) {
-                typeArgument = currentType.getTypeArgument(name)
+                typeArgument = currentType.typeArgumentsByName[name]
                 if (typeArgument != null) {
                     this.typeArgument = typeArgument
                     break
@@ -175,7 +184,7 @@ internal class ResolvableFunctionImpl<T>(
                 // 否则在外部类里找这个参数。
                 var result: ResolvableType<*>? = null
                 for (resolvableType in generateSequence(ownerType) { it.outerType }) {
-                    result = resolvableType.getTypeArgument(classifier.name)?.type
+                    result = resolvableType.typeArgumentsByName[classifier.name]?.type
                     if (result != null || !resolvableType.isInnerClass) {
                         break
                     }
@@ -204,5 +213,23 @@ internal class ResolvableFunctionImpl<T>(
             }
             else -> error("Unsupported type classifier: $classifier")
         }
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is ResolvableFunction<*>) return false
+
+        if (ownerType != other.ownerType) return false
+        return rawFunction == other.rawFunction
+    }
+
+    override fun hashCode(): Int {
+        var result = ownerType?.hashCode() ?: 0
+        result = 31 * result + rawFunction.hashCode()
+        return result
+    }
+
+    override fun toString(): String {
+        return "ResolvableFunction(ownerType=$ownerType, rawFunction=$rawFunction)"
     }
 }

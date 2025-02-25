@@ -26,11 +26,4 @@ interface ResolvableTypeArgumentOwner {
     val typeArgumentsByName: Map<String, ResolvableTypeArgument>
 
     val isResolved: Boolean
-
-    fun getTypeArgument(name: String): ResolvableTypeArgument? {
-        return typeArgumentsByName[name]
-    }
-    fun getTypeArgumentOrFail(name: String): ResolvableTypeArgument {
-        return getTypeArgument(name) ?: throw IllegalArgumentException("No type argument named $name")
-    }
 }

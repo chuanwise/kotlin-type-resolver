@@ -23,7 +23,6 @@ import kotlin.reflect.KType
 import kotlin.reflect.KTypeProjection
 import kotlin.reflect.KVariance
 import kotlin.reflect.full.createType
-import kotlin.reflect.jvm.javaType
 import kotlin.reflect.typeOf
 
 /**
@@ -33,6 +32,8 @@ import kotlin.reflect.typeOf
  * @author Chuanwise
  */
 interface ResolvableTypeBuilder<T> {
+    val typeResolver: TypeResolver?
+
     fun nullable(nullable: Boolean): ResolvableTypeBuilder<T>
     fun nullable(): ResolvableTypeBuilder<T> = apply { nullable(nullable = true) }
     fun notNullable(): ResolvableTypeBuilder<T> = apply { nullable(nullable = false) }
@@ -54,7 +55,7 @@ interface ResolvableTypeBuilder<T> {
 
 @Suppress("UNCHECKED_CAST")
 internal class ResolvableTypeBuilderImpl<T>(
-    private val typeResolver: TypeResolverImpl?,
+    override val typeResolver: TypeResolverImpl?,
     private val rawType: KType? = null,
     initialRawClass: KClass<T & Any>? = null,
 
@@ -63,7 +64,6 @@ internal class ResolvableTypeBuilderImpl<T>(
     private val typeCache: MutableMap<KType, ResolvableType<*>> = mutableMapOf()
 ) : ResolvableTypeBuilder<T> {
     private var nullable: Boolean = false
-
     private val rawClass: KClass<T & Any> = when {
         initialRawClass != null -> initialRawClass
         rawType != null -> rawType.classifier.toRawClass()
@@ -85,14 +85,18 @@ internal class ResolvableTypeBuilderImpl<T>(
 
     private val annotations = mutableListOf<Annotation>()
 
+    private fun createResolvableTypeBuilderWithSharedCache(rawType: KType): ResolvableTypeBuilder<*> {
+        return ResolvableTypeBuilderImpl<Any>(typeResolver, rawType, initialRawClass = null, typeCache)
+    }
+
     internal fun addTypeCache(type: ResolvableType<*>) {
         typeCache[type.rawType] = type
     }
 
-    internal fun getCacheTypeOrResolve(type: KType): ResolvableTypeImpl<*> {
-        return typeResolver?.getTypeCache(type) as ResolvableTypeImpl<*>?
-            ?: typeCache[type] as ResolvableTypeImpl<*>?
-            ?: ResolvableTypeBuilderImpl<Any>(typeResolver, type, typeCache = typeCache).build() as ResolvableTypeImpl<*>
+    internal fun getCacheTypeOrResolve(rawType: KType): ResolvableTypeImpl<*> {
+        return typeResolver?.getTypeCache(rawType) as ResolvableTypeImpl<*>?
+            ?: typeCache[rawType] as ResolvableTypeImpl<*>?
+            ?: createResolvableTypeBuilderWithSharedCache(rawType).build() as ResolvableTypeImpl<*>
     }
 
     override fun nullable(nullable: Boolean): ResolvableTypeBuilder<T> = apply { this.nullable = nullable }
@@ -151,6 +155,10 @@ internal class ResolvableTypeBuilderImpl<T>(
     private val Class<*>.isNotInnerClass: Boolean get() = isInterface || isEnum || isAnnotation
 
     private fun checkAndTrySetOuterType() {
+        if (outerType != null) {
+            return
+        }
+
         val directOuterJavaClass = rawClass.java.enclosingClass ?: return
         var outerJavaClass: Class<*>? = directOuterJavaClass
 
@@ -189,7 +197,8 @@ internal class ResolvableTypeBuilderImpl<T>(
 
         val directRawOuterClass = directOuterJavaClass.kotlin as KClass<Any>
         val rawOuterType = directRawOuterClass.createType(rawOuterTypeParameters, false, emptyList())
-        outerType = ResolvableTypeBuilderImpl(typeResolver, rawOuterType, directRawOuterClass, typeCache).build()
+        outerType = typeCache[rawOuterType]
+            ?: ResolvableTypeBuilderImpl(typeResolver, rawOuterType, directRawOuterClass, typeCache).build()
     }
 
     override fun build(): ResolvableType<T> {
