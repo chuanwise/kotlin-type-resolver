@@ -2,11 +2,11 @@
 
 一个用于解析 Kotlin 类型，尤其是泛型类型的工具；支持 Kotlin JVM。
 
-## 速览
+## 功能速览
 
 ### 可解析类型 - `ResolvableType<T>`
 
-使用 `createResolvableType<T>()` 创建一个可解析类型，通过它进行各种操作。
+使用 `createResolvableType<T>()` 创建一个可解析类型，或者 `typeResolver.resolve(type)`，通过它进行各种操作。
 
 ```kt
 // 使用 `createResolvableType<T>()` 创建一个可解析类型。
