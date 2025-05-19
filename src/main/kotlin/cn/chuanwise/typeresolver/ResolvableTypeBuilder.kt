@@ -26,7 +26,7 @@ import kotlin.reflect.full.createType
 import kotlin.reflect.typeOf
 
 /**
- * [createResolvableType] 构建器。
+ * [ResolvableType] 构建器。
  *
  *
  * @author Chuanwise
@@ -51,6 +51,20 @@ interface ResolvableTypeBuilder<T> {
     fun annotation(annotation: Annotation): ResolvableTypeBuilder<T>
 
     fun build(): ResolvableType<T>
+}
+
+fun <T> ResolvableTypeBuilder(
+    rawClass: KClass<T & Any>,
+    typeResolver: TypeResolver? = null
+): ResolvableTypeBuilder<T> {
+    return ResolvableTypeBuilderImpl(typeResolver as TypeResolverImpl?, initialRawClass = rawClass)
+}
+
+fun ResolvableTypeBuilder(
+    rawType: KType,
+    typeResolver: TypeResolver? = null
+): ResolvableTypeBuilder<*> {
+    return ResolvableTypeBuilderImpl<Any>(typeResolver as TypeResolverImpl?, rawType = rawType)
 }
 
 @Suppress("UNCHECKED_CAST")

@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.net.URI
 
 private typealias Str = String
 
@@ -28,12 +29,12 @@ class ResolvableTypeTest {
 
     @Test
     fun testSimple() {
-        val type = createResolvableType<Simple>()
+        val type = ResolvableType<Simple>()
     }
 
     @Test
     fun testTypeAlias() {
-        val type = createResolvableType<Str>()
+        val type = ResolvableType<Str>()
     }
 
     class OuterClass<T> {
@@ -48,21 +49,21 @@ class ResolvableTypeTest {
 
     @Test
     fun testNestedClass() {
-        val outerType = createResolvableType<OuterClass<Int>>()
-        val innerType = createResolvableType<OuterClass<Int>.InnerClass<String>>()
+        val outerType = ResolvableType<OuterClass<Int>>()
+        val innerType = ResolvableType<OuterClass<Int>.InnerClass<String>>()
 
-        assertEquals(outerType, innerType.outerType)
-        assertEquals(createResolvableType<Int>(), outerType.typeArguments[0].type)
-        assertEquals(createResolvableType<String>(), innerType.typeArguments[0].type)
+        assertEquals(outerType, innerType.ownerType)
+        assertEquals(ResolvableType<Int>(), outerType.typeArguments[0].type)
+        assertEquals(ResolvableType<String>(), innerType.typeArguments[0].type)
     }
 
     @Test
     fun testNestedInterface() {
-        val outerType = createResolvableType<OuterInterface<Int>>()
-        val innerType = createResolvableType<OuterInterface.InnerClass<String>>()
+        val outerType = ResolvableType<OuterInterface<Int>>()
+        val innerType = ResolvableType<OuterInterface.InnerClass<String>>()
 
-        assertEquals(createResolvableType<Int>(), outerType.typeArguments[0].type)
-        assertEquals(createResolvableType<String>(), innerType.typeArguments[0].type)
+        assertEquals(ResolvableType<Int>(), outerType.typeArguments[0].type)
+        assertEquals(ResolvableType<String>(), innerType.typeArguments[0].type)
     }
 
     interface Foo
@@ -73,26 +74,26 @@ class ResolvableTypeTest {
 
     @Test
     fun testAssignCheck() {
-        val nullableString = createResolvableType<String?>()
-        val string = createResolvableType<String>()
+        val nullableString = ResolvableType<String?>()
+        val string = ResolvableType<String>()
 
         assertTrue(nullableString.isAssignableFrom(string))
         assertFalse(string.isAssignableFrom(nullableString))
 
-        val foo = createResolvableType<Foo>()
-        val fooSon = createResolvableType<FooSon>()
+        val foo = ResolvableType<Foo>()
+        val fooSon = ResolvableType<FooSon>()
 
         assertTrue(foo.isAssignableFrom(fooSon))
         assertFalse(fooSon.isAssignableFrom(foo))
 
-        val bar = createResolvableType<Bar<Foo>>()
-        val barSon = createResolvableType<Bar<FooSon>>()
+        val bar = ResolvableType<Bar<Foo>>()
+        val barSon = ResolvableType<Bar<FooSon>>()
 
         assertTrue(bar.isAssignableFrom(barSon))
         assertFalse(barSon.isAssignableFrom(bar))
 
-        val baz = createResolvableType<Baz<Foo>>()
-        val bazSon = createResolvableType<Baz<FooSon>>()
+        val baz = ResolvableType<Baz<Foo>>()
+        val bazSon = ResolvableType<Baz<FooSon>>()
 
         assertFalse(baz.isAssignableFrom(bazSon))
         assertFalse(bazSon.isAssignableFrom(baz))
@@ -108,15 +109,15 @@ class ResolvableTypeTest {
 
     @Test
     fun testParseComplexInnerClass() {
-        val foo4 = createResolvableType<Foo1.Foo2.Foo3.Foo4<Float>>()
-        val foo3 = createResolvableType<Foo1.Foo2.Foo3<Float>>()
-        val foo2 = createResolvableType<Foo1.Foo2<Float>>()
-        val foo1 = createResolvableType<Foo1<Float>>()
+        val foo4 = ResolvableType<Foo1.Foo2.Foo3.Foo4<Float>>()
+        val foo3 = ResolvableType<Foo1.Foo2.Foo3<Float>>()
+        val foo2 = ResolvableType<Foo1.Foo2<Float>>()
+        val foo1 = ResolvableType<Foo1<Float>>()
     }
 
     @Test
     fun testSuperClassParameter() {
-        val string = createResolvableType<String>()
+        val string = ResolvableType<String>()
         val comparableArgument = string.getTypeArgumentOrFail(Comparable::class, "T").type!!
 
         assertEquals(string, comparableArgument)
@@ -134,19 +135,63 @@ class ResolvableTypeTest {
 
     @Test
     fun testComplexMemberClass() {
-        val foo3 = createResolvableType<Foo3<Float>.Foo3.Foo3<Double, String>>()
+        val foo3 = ResolvableType<Foo3<Float>.Foo3.Foo3<Double, String>>()
         val innerFoo3 = foo3.memberTypes.single()
 
         val fooFun = innerFoo3.memberFunctions.single { it.rawFunction.name == "foo" }
         val fooFunT = fooFun.parameters.last()
-        assertEquals(createResolvableType<Map<Map<String, List<Map<Double, String>>>, String>>(), fooFunT.type)
+        assertEquals(ResolvableType<Map<Map<String, List<Map<Double, String>>>, String>>(), fooFunT.type)
 
         val fooFunReturnType = fooFun.returnType!!
-        assertEquals(createResolvableType<Double>(), fooFunReturnType.getTypeArgument<Pair<*, *>>(0)?.type)
+        assertEquals(ResolvableType<Double>(), fooFunReturnType.getTypeArgument<Pair<*, *>>(0)?.type)
 
         assertEquals(
-            createResolvableType<String>(),
+            ResolvableType<String>(),
             fooFunReturnType.getTypeArgument<Pair<*, *>>(1)?.type?.getTypeArgument<Map<*, *>>("K")?.type
         )
+    }
+
+    class Foo4 {
+        val field: Int = error("Not implemented")
+    }
+
+    @Test
+    fun testField() {
+        val foo4 = ResolvableType<Foo4>()
+        val field = foo4.memberProperties.singleOrNull { it.name == "field" }
+    }
+
+    class Foo5<T> {
+        val field: T = error("Not implemented")
+    }
+
+    @Test
+    fun testParameterizedField() {
+        val foo5 = ResolvableType<Foo5<Int>>()
+        val field = foo5.memberProperties.singleOrNull { it.name == "field" }
+
+        assertEquals(ResolvableType<Int>(), field?.type)
+    }
+
+    @Test
+    fun testMutableMap() {
+        val mutableMap = ResolvableType<MutableMap<String, String>>()
+
+        val typeResolver = TypeResolver()
+        val putFun = mutableMap.rawClass.java.methods.single { it.name == "put" }
+        val putReturnType = typeResolver.resolveByOuterType(mutableMap, putFun.genericReturnType)
+
+        assertEquals(ResolvableType<String>(), putReturnType)
+    }
+
+    @Test
+    fun testComplexMutableMap() {
+        val mutableMap = ResolvableType<MutableMap<String, Map<List<Pair<Float, URI>>, Int>>>()
+
+        val typeResolver = TypeResolver()
+        val putFun = mutableMap.rawClass.java.methods.single { it.name == "put" }
+        val putReturnType = typeResolver.resolveByOuterType(mutableMap, putFun.genericReturnType)
+
+        assertEquals(ResolvableType<Map<List<Pair<Float, URI>>, Int>>(), putReturnType)
     }
 }

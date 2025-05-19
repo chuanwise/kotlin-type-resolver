@@ -14,23 +14,20 @@
  * limitations under the License.
  */
 
-@file:JvmName("ResolvableFunctionFactory")
-
 package cn.chuanwise.typeresolver
 
-import kotlin.reflect.KFunction
-
-@JvmOverloads
-fun <T> createResolvableFunction(
-    rawFunction: KFunction<T>,
-    typeResolver: TypeResolver = createTypeResolver()
-) : ResolvableFunction<T> {
-    return ResolvableFunctionImpl(null, rawFunction, typeResolver)
+/**
+ * 可能可以作为可解析类型成员的类型。
+ *
+ * @author Chuanwise
+ * @see ResolvableType
+ * @see ResolvableFunction
+ * @see ResolvableProperty
+ */
+sealed interface ResolvableTypeMember {
+    val ownerType: ResolvableType<*>?
 }
 
-@JvmOverloads
-fun <T> KFunction<T>.toResolvableFunction(
-    typeResolver: TypeResolver = createTypeResolver()
-) : ResolvableFunction<T> {
-    return createResolvableFunction(this, typeResolver)
-}
+internal abstract class AbstractResolvableTypeMember(
+    override val ownerType: ResolvableType<*>?
+) : ResolvableTypeMember

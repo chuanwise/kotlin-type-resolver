@@ -16,7 +16,6 @@
 
 package cn.chuanwise.typeresolver
 
-import kotlin.reflect.KClass
 import kotlin.reflect.KFunction
 import kotlin.reflect.KParameter
 import kotlin.reflect.KType
@@ -26,7 +25,7 @@ import kotlin.reflect.KTypeProjection
 /**
  * 可解析函数。
  *
- * 通过 [createResolvableFunction] 或 [ResolvableType.memberFunctions] 获取，
+ * 通过 [ResolvableFunction] 或 [ResolvableType.memberFunctions] 获取，
  * 可用于推导函数的相关类型，包括返回值类型、参数类型等。
  *
  * @param T 函数的返回类型。
@@ -64,11 +63,26 @@ interface ResolvableFunction<T> : ResolvableTypeArgumentOwner {
     val parametersByName: Map<String, ResolvableFunctionParameter>
 }
 
+@JvmOverloads
+fun <T> ResolvableFunction(
+    rawFunction: KFunction<T>,
+    typeResolver: TypeResolver = TypeResolver()
+) : ResolvableFunction<T> {
+    return ResolvableFunctionImpl(null, rawFunction, typeResolver)
+}
+
+@JvmOverloads
+fun <T> KFunction<T>.toResolvableFunction(
+    typeResolver: TypeResolver = TypeResolver()
+) : ResolvableFunction<T> {
+    return ResolvableFunction(this, typeResolver)
+}
+
 internal class ResolvableFunctionImpl<T>(
     override val ownerType: ResolvableType<*>?,
     override val rawFunction: KFunction<T>,
     typeResolver: TypeResolver
-) : ResolvableFunction<T> {
+) : AbstractResolvableTypeMember(ownerType), ResolvableFunction<T> {
     override val typeParameters: List<KTypeParameter> = rawFunction.typeParameters
     override val typeParametersByName: Map<String, KTypeParameter> = typeParameters.associateBy { it.name }
 
@@ -117,7 +131,7 @@ internal class ResolvableFunctionImpl<T>(
                     this.typeArgument = typeArgument
                     break
                 }
-                currentType = currentType.outerType
+                currentType = currentType.ownerType
             }
 
             requireNotNull(typeArgument) { "No type argument named $name." }
@@ -158,10 +172,13 @@ internal class ResolvableFunctionImpl<T>(
         typeArgumentsByName = typeArguments.associateBy { it.name }
 
         rawReturnType = rawFunction.returnType
-        returnType = typeResolver.resolveByOuterType(rawReturnType)
+        returnType = typeResolver.resolveByOuterType(ownerType, rawReturnType, ignored = typeArgumentsByName.keys)
 
         parameters = rawFunction.parameters.map {
-            ResolvableFunctionParameterImpl(it.name, it.index, it, typeResolver.resolveByOuterType(it.type))
+            ResolvableFunctionParameterImpl(
+                it.name, it.index, it,
+                typeResolver.resolveByOuterType(ownerType, it.type, ignored = typeArgumentsByName.keys)
+            )
         }
 
         if (parameters.isEmpty()) {
@@ -171,48 +188,6 @@ internal class ResolvableFunctionImpl<T>(
         }
 
         flush()
-    }
-
-    private fun TypeResolver.resolveByOuterType(type: KType) : ResolvableType<*>? {
-        return when (val classifier = type.classifier) {
-            is KTypeParameter -> {
-                // 如果是在本函数上定义的类型参数，就无法解析。
-                if (classifier.name in typeArgumentsByName) {
-                    return null
-                }
-
-                // 否则在外部类里找这个参数。
-                var result: ResolvableType<*>? = null
-                for (resolvableType in generateSequence(ownerType) { it.outerType }) {
-                    result = resolvableType.typeArgumentsByName[classifier.name]?.type
-                    if (result != null || !resolvableType.isInnerClass) {
-                        break
-                    }
-                }
-                result as ResolvableTypeImpl<*>
-            }
-            is KClass<*> -> {
-                val result = resolve(type) as ResolvableTypeImpl<*>
-                for (resolvableType in generateSequence(ownerType) { it.outerType }) {
-                    if (result.isResolved || result.isInnerClass) {
-                        break
-                    }
-
-                    for (typeArgument in resolvableType.typeArguments) {
-                        val typeArgumentType = typeArgument.type ?: continue
-                        result.prompt(
-                            typeArgument.name, typeArgumentType.rawType,
-                            resolvableType as ResolvableTypeImpl<*>, this
-                        )
-                        if (result.isResolved) {
-                            break
-                        }
-                    }
-                }
-                result
-            }
-            else -> error("Unsupported type classifier: $classifier")
-        }
     }
 
     override fun equals(other: Any?): Boolean {
@@ -230,6 +205,6 @@ internal class ResolvableFunctionImpl<T>(
     }
 
     override fun toString(): String {
-        return "ResolvableFunction(ownerType=$ownerType, rawFunction=$rawFunction)"
+        return "ResolvableFunction(rawFunction=$rawFunction, ownerType=$ownerType)"
     }
 }

@@ -16,10 +16,11 @@
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    `maven-publish`
 }
 
 group = "cn.chuanwise"
-version = "0.1.0-SNAPSHOT"
+version = "0.1.0"
 
 repositories {
     mavenCentral()
@@ -34,4 +35,35 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+publishing {
+    repositories {
+        maven {
+            val snapshot = version.toString().contains("snapshot", ignoreCase = true)
+            val suffix = if (snapshot) "snapshots" else "releases"
+
+            name = "Chuanwise"
+            url = uri("https://nexus.chuanwise.cn/repository/maven-${suffix}")
+
+            fun find(key: String, env: String): String? {
+                return rootProject.findProperty(key) as String? ?: System.getProperty(key) ?: System.getenv(env)
+            }
+
+            credentials {
+                username = find("nexus.username", "NEXUS_USERNAME")
+                password = find("nexus.password", "NEXUS_PASSWORD")
+            }
+        }
+    }
+
+    publications {
+        create<MavenPublication>("product") {
+            artifactId = "kotlin-type-resolver"
+
+            artifact(tasks.kotlinSourcesJar)
+
+            from(components["java"])
+        }
+    }
 }

@@ -14,21 +14,15 @@
  * limitations under the License.
  */
 
-@file:JvmName("ResolvableTypeFactory")
-
 package cn.chuanwise.typeresolver
 
-import kotlin.reflect.KType
-import kotlin.reflect.typeOf
+import kotlin.reflect.KProperty
 
-fun createResolvableType(type: KType): ResolvableType<*> {
-    return createTypeResolver().resolve(type)
-}
-fun KType.toResolvableType(): ResolvableType<*> {
-    return createResolvableType(this)
-}
+interface ResolvableProperty<T> : ResolvableTypeMember {
+    val name: String
 
-@Suppress("UNCHECKED_CAST")
-inline fun <reified T> createResolvableType() : ResolvableType<T> {
-    return createResolvableType(typeOf<T>()) as ResolvableType<T>
+    val type: ResolvableType<*>?
+    val isResolved: Boolean
+
+    val rawProperty: KProperty<T>
 }

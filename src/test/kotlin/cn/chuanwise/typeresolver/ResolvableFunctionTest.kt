@@ -32,21 +32,21 @@ class ResolvableFunctionTest {
 
     @Test
     fun testFunctionTypeArgument() {
-        val map = createResolvableType<Map<String, Int>>()
+        val map = ResolvableType<Map<String, Int>>()
 
         val rawGetFunction = map.rawClass.java.getDeclaredMethod("get", Any::class.java).kotlinFunction
         val getFunction = map.memberFunctionsByRawFunction[rawGetFunction]!!
 
-        assertEquals(createResolvableType<Int>(), getFunction.returnType)
+        assertEquals(ResolvableType<Int>(), getFunction.returnType)
 
-        val bar = createResolvableType<Foo<String>.Bar>()
+        val bar = ResolvableType<Foo<String>.Bar>()
         val fooFunction = bar.rawClass.java.getDeclaredMethod("foo", List::class.java).kotlinFunction
         val foo = bar.memberFunctionsByRawFunction[fooFunction]!!
 
-        assertEquals(createResolvableType<String>(), foo.returnType)
+        assertEquals(ResolvableType<String>(), foo.returnType)
 
         val fooT = foo.parameters.last().type!!
-        assertEquals(createResolvableType<List<String>>(), fooT)
+        assertEquals(ResolvableType<List<String>>(), fooT)
     }
 
     class Foo2<T> {
@@ -57,17 +57,17 @@ class ResolvableFunctionTest {
 
     @Test
     fun testComplexFunctionTypeArgument() {
-        val bar = createResolvableType<Foo2<String>.Bar2<Int>>()
+        val bar = ResolvableType<Foo2<String>.Bar2<Int>>()
         val fooFunction = bar.rawClass.java.getDeclaredMethod("foo", List::class.java).kotlinFunction
         val foo = bar.memberFunctionsByRawFunction[fooFunction]!!
 
-        assertEquals(createResolvableType<Int>(), foo.returnType)
-        assertEquals(createResolvableType<List<Int>>(), foo.parameters.last().type!!)
+        assertEquals(ResolvableType<Int>(), foo.returnType)
+        assertEquals(ResolvableType<List<Int>>(), foo.parameters.last().type!!)
     }
 
     @Test
     fun testOuterFunction() {
-        val foo = createResolvableFunction(::foo)
-        val bar = createResolvableFunction<Any>(::bar)
+        val foo = ResolvableFunction(::foo)
+        val bar = ResolvableFunction<Any>(::bar)
     }
 }

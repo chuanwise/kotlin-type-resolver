@@ -16,26 +16,31 @@
 
 package cn.chuanwise.typeresolver
 
+import java.util.Queue
+import java.util.Stack
 import kotlin.reflect.KClass
 import kotlin.reflect.KFunction
+import kotlin.reflect.KProperty
 import kotlin.reflect.KType
 import kotlin.reflect.KTypeParameter
 import kotlin.reflect.KTypeProjection
 import kotlin.reflect.KVariance
 import kotlin.reflect.full.createType
+import kotlin.reflect.full.isSubclassOf
 import kotlin.reflect.full.isSuperclassOf
 import kotlin.reflect.full.memberFunctions
+import kotlin.reflect.typeOf
 
 /**
  * 可解析类型，用于解析 [KType] 的工具，也可以用于推导类型参数。
  *
- * 通过 [createResolvableType] 或 [TypeResolver.resolve] 构造。无法构造无法表示的类型，例如 `T & Any`。
+ * 通过 [ResolvableType] 或 [TypeResolver.resolve] 构造。无法构造无法表示的类型，例如 `T & Any`。
  *
  * @param T 类型的原始类型。
  * @author Chuanwise
- * @see createTypeResolver
+ * @see TypeResolver
  */
-interface ResolvableType<T> : ResolvableTypeArgumentOwner {
+interface ResolvableType<T> : ResolvableTypeArgumentOwner, ResolvableTypeMember {
     /**
      * 该类型的原始类型。
      */
@@ -57,9 +62,9 @@ interface ResolvableType<T> : ResolvableTypeArgumentOwner {
     val superTypes: List<ResolvableType<*>>
 
     /**
-     * 类型的外部类，如果有。
+     * 可解析类型的成员，包括函数、内部类和属性。不包括构造函数。
      */
-    val outerType: ResolvableType<*>?
+    val members: List<ResolvableTypeMember>
 
     /**
      * 类型的成员类。
@@ -90,6 +95,21 @@ interface ResolvableType<T> : ResolvableTypeArgumentOwner {
      * 通过原始函数获取成员函数。
      */
     val memberFunctionsByRawFunction: Map<KFunction<*>, ResolvableFunction<*>>
+
+    /**
+     * 类型的成员属性。
+     */
+    val memberProperties: List<ResolvableProperty<*>>
+
+    /**
+     * 通过属性名获取成员属性。
+     */
+    val memberPropertiesByName: Map<String, ResolvableProperty<*>>
+
+    /**
+     * 通过原始属性获取成员属性。
+     */
+    val memberPropertiesByRawProperty: Map<KProperty<*>, ResolvableProperty<*>>
 
     /**
      * 检查当前类型的引用能否被 [other] 类型的引用赋值。
@@ -150,6 +170,58 @@ interface ResolvableType<T> : ResolvableTypeArgumentOwner {
     }
 }
 
+fun ResolvableType(type: KType): ResolvableType<*> {
+    return TypeResolver().resolve(type)
+}
+fun KType.toResolvableType(): ResolvableType<*> {
+    return ResolvableType(this)
+}
+
+@JvmOverloads
+@Suppress("UNCHECKED_CAST")
+fun <T> ResolvableType(rawClass: KClass<T & Any>, nullable: Boolean = false): ResolvableType<T> {
+    return TypeResolver().buildType(rawClass) {
+        nullable(nullable)
+    } as ResolvableType<T>
+}
+
+@JvmOverloads
+fun <T> KClass<T & Any>.toResolvableType(nullable: Boolean = false): ResolvableType<T> {
+    return ResolvableType(this, nullable)
+}
+
+@Suppress("UNCHECKED_CAST")
+inline fun <reified T> ResolvableType() : ResolvableType<T> {
+    return ResolvableType(typeOf<T>()) as ResolvableType<T>
+}
+
+inline fun <reified T> ResolvableType<*>.getTypeArgument(index: Int): ResolvableTypeArgument? {
+    return getTypeArgument(T::class, index)
+}
+inline fun <reified T> ResolvableType<*>.getTypeArgumentOrFail(index: Int): ResolvableTypeArgument? {
+    return getTypeArgumentOrFail(T::class, index)
+}
+
+inline fun <reified T> ResolvableType<*>.getTypeArgument(name: String): ResolvableTypeArgument? {
+    return getTypeArgument(T::class, name)
+}
+inline fun <reified T> ResolvableType<*>.getTypeArgumentOrFail(name: String): ResolvableTypeArgument? {
+    return getTypeArgumentOrFail(T::class, name)
+}
+
+val ResolvableType<*>.isNothing: Boolean get() = rawClass == Nothing::class
+val ResolvableType<*>.isUnit: Boolean get() = rawClass == Unit::class
+val ResolvableType<*>.isString: Boolean get() = rawClass == String::class
+
+val ResolvableType<*>.isCollection: Boolean get() = rawClass.isSubclassOf(Collection::class)
+val ResolvableType<*>.isSet: Boolean get() = rawClass.isSubclassOf(Set::class)
+val ResolvableType<*>.isList: Boolean get() = rawClass.isSubclassOf(List::class)
+val ResolvableType<*>.isQueue: Boolean get() = rawClass.isSubclassOf(Queue::class)
+val ResolvableType<*>.isStack: Boolean get() = rawClass.isSubclassOf(Stack::class)
+val ResolvableType<*>.isMap: Boolean get() = rawClass.isSubclassOf(Map::class)
+
+val ResolvableType<*>.isArray: Boolean get() = rawClass == Array::class
+
 // 允许使用相关类型的类型参数完善自身信息的接口。
 // 例如当前函数的返回类型是 T，但 T 由外部类定义，只能在外部类解析出 T 的实际类型后，
 // 调用内部类的 prompt 方法，将 T 的实际类型传递给内部类。返回 true 表示有帮助。
@@ -157,15 +229,46 @@ private interface PromptSupported {
     fun prompt(name: String, rawType: KType, type: ResolvableTypeImpl<*>, resolver: TypeResolver): Boolean
 }
 
+private fun KType.prompt(name: String, rawType: KType, type: ResolvableTypeImpl<*>, resolver: TypeResolver) : KType {
+    var result = this
+
+    // 检查当前参数是否是现在的 T。如果是的话替换为当前类型。
+    val classifier = result.classifier
+    if (classifier is KTypeParameter && classifier.name == name) {
+        result = rawType
+    }
+
+    // 检查当前参数的泛型参数里是否包含 T。
+    var typeUpdated = false
+    val newArguments = result.arguments.map {
+        // 只处理非 * 的类型。
+        val itType = it.type ?: return@map it
+        val prompted = itType.prompt(name, rawType, type, resolver)
+
+        if (it.type == prompted) {
+            it
+        } else {
+            typeUpdated = true
+            KTypeProjection(it.variance, prompted)
+        }
+    }
+
+    if (typeUpdated) {
+        result = (result.classifier as KClass<*>).createType(newArguments, result.isMarkedNullable, result.annotations)
+    }
+
+    return result
+}
+
 @Suppress("UNCHECKED_CAST")
 internal class ResolvableTypeImpl<T>(
     override var rawType: KType,
     override val rawClass: KClass<T & Any>,
-    override val outerType: ResolvableType<*>?,
+    override val ownerType: ResolvableType<*>?,
 
     // 需要 builder 的原因是需要把初始化到一半的类型缓存进去。
     builder: ResolvableTypeBuilderImpl<T>
-) : ResolvableType<T>, PromptSupported {
+) : AbstractResolvableTypeMember(ownerType), ResolvableType<T>, PromptSupported {
     override val typeParameters: List<KTypeParameter> = rawClass.typeParameters
     override val typeParametersByName: Map<String, KTypeParameter> = typeParameters.associateBy { it.name }
 
@@ -180,9 +283,14 @@ internal class ResolvableTypeImpl<T>(
         memberTypes.associateBy { it.rawClass }
     }
 
-    override val typeArguments: List<AbstractResolvableTypeArgument>
-    override val typeArgumentsByName: Map<String, ResolvableTypeArgument>
-    private var initialized = false
+    private val memberPropertiesDelegate: Lazy<List<ResolvableProperty<*>>>
+    override val memberProperties: List<ResolvableProperty<*>> get() = memberPropertiesDelegate.value
+    override val memberPropertiesByName: Map<String, ResolvableProperty<*>> by lazy {
+        memberProperties.associateBy { it.name }
+    }
+    override val memberPropertiesByRawProperty: Map<KProperty<*>, ResolvableProperty<*>> by lazy {
+        memberProperties.associateBy { it.rawProperty }
+    }
 
     private val memberFunctionDelegate: Lazy<List<ResolvableFunction<*>>>
     override val memberFunctions: List<ResolvableFunction<*>> get() = memberFunctionDelegate.value
@@ -190,15 +298,22 @@ internal class ResolvableTypeImpl<T>(
         memberFunctions.associateBy { it.rawFunction }
     }
 
+    override val members: List<ResolvableTypeMember> by lazy {
+        memberTypes as List<ResolvableTypeMember> + memberProperties as List<ResolvableTypeMember> + memberFunctions as List<ResolvableTypeMember>
+    }
+
+    override val typeArguments: List<AbstractResolvableTypeArgument>
+    override val typeArgumentsByName: Map<String, ResolvableTypeArgument>
+
     override val isInnerClass: Boolean
     override val isMemberClass: Boolean
 
     private fun flush() {
-        isResolved = outerType?.isResolved != false && typeArguments.all { it.isResolved }
+        isResolved = ownerType?.isResolved != false && typeArguments.all { it.isResolved }
     }
 
     override fun prompt(name: String, rawType: KType, type: ResolvableTypeImpl<*>, resolver: TypeResolver) : Boolean {
-        if (isResolved || !initialized) {
+        if (isResolved) {
             return false
         }
 
@@ -218,7 +333,7 @@ internal class ResolvableTypeImpl<T>(
             val unresolvedTypeArguments = this.rawType.arguments
             if (unresolvedTypeArguments.isNotEmpty()) {
                 val argumentTypes = mutableListOf<KType?>()
-                for (resolvableType in generateSequence(this as ResolvableType<*>) { it.outerType }) {
+                for (resolvableType in generateSequence(this as ResolvableType<*>) { it.ownerType }) {
                     argumentTypes.addAll(resolvableType.typeArguments.map { it.type?.rawType ?: it.rawProjection.type })
                     if (!resolvableType.isInnerClass) {
                         break
@@ -302,37 +417,6 @@ internal class ResolvableTypeImpl<T>(
         override val isAll: Boolean = false
         override var isResolved: Boolean = type?.isResolved == true
 
-        private fun KType.prompt(name: String, rawType: KType, type: ResolvableTypeImpl<*>, resolver: TypeResolver) : KType {
-            var result = this
-
-            // 检查当前参数是否是现在的 T。如果是的话替换为当前类型。
-            val classifier = result.classifier
-            if (classifier is KTypeParameter && classifier.name == name) {
-                result = rawType
-            }
-
-            // 检查当前参数的泛型参数里是否包含 T。
-            var typeUpdated = false
-            val newArguments = result.arguments.map {
-                // 只处理非 * 的类型。
-                val itType = it.type ?: return@map it
-                val prompted = itType.prompt(name, rawType, type, resolver)
-
-                if (it.type == prompted) {
-                    it
-                } else {
-                    typeUpdated = true
-                    KTypeProjection(it.variance, prompted)
-                }
-            }
-
-            if (typeUpdated) {
-                result = (result.classifier as KClass<*>).createType(newArguments, result.isMarkedNullable, result.annotations)
-            }
-
-            return result
-        }
-
         override fun prompt(name: String, rawType: KType, type: ResolvableTypeImpl<*>, resolver: TypeResolver): Boolean {
             if (isResolved) {
                 return false
@@ -367,24 +451,67 @@ internal class ResolvableTypeImpl<T>(
         override fun resolve(type: KType): ResolvableType<*> = builder.getCacheTypeOrResolve(type)
     }
 
+    private inner class ResolvablePropertyImpl<T>(
+        override val name: String,
+        override val rawProperty: KProperty<T>,
+        var rawType: KType,
+        override var type: ResolvableType<*>?
+    ) : ResolvableProperty<T>, PromptSupported {
+        override val ownerType: ResolvableType<*> get() = this@ResolvableTypeImpl
+        override val isResolved: Boolean = type?.isResolved == true
+
+        override fun prompt(
+            name: String,
+            rawType: KType,
+            type: ResolvableTypeImpl<*>,
+            resolver: TypeResolver
+        ): Boolean {
+            if (isResolved) {
+                return false
+            }
+
+            var result = false
+            val newRawType = this.rawType.prompt(name, rawType, type, resolver)
+            if (newRawType != this.rawType) {
+                this.rawType = newRawType
+                this.type = resolver.resolve(newRawType)
+                result = true
+            }
+
+            if (result) {
+                flush()
+            }
+            return result
+        }
+    }
+
     init {
         builder.addTypeCache(this)
         val builderResolver = BuilderTypeResolverImpl(builder)
 
-        isMemberClass = outerType != null
+        isMemberClass = ownerType != null
         isInnerClass = isMemberClass && rawClass.isInner
 
         superTypes = rawClass.supertypes.map { builder.getCacheTypeOrResolve(it) }
+
         memberTypesDelegate = lazy {
             rawClass.nestedClasses.map {
-                createResolvableTypeBuilder(it as KClass<T & Any>, builder.typeResolver)
+                ResolvableTypeBuilder(it as KClass<T & Any>, builder.typeResolver)
                     .outerType(this)
                     .build() as ResolvableTypeImpl<*>
             }
         }
-
         memberFunctionDelegate = lazy {
             rawClass.memberFunctions.map { ResolvableFunctionImpl(this, it, builderResolver) }
+        }
+        memberPropertiesDelegate = lazy {
+            rawClass.members.filterIsInstance<KProperty<*>>()
+                .map {
+                    ResolvablePropertyImpl(
+                        it.name, it, it.returnType,
+                        builderResolver.resolveByOuterType(this, it.returnType)
+                    )
+                }
         }
 
         val rawTypeParameters = rawClass.typeParameters
@@ -449,7 +576,6 @@ internal class ResolvableTypeImpl<T>(
             typeArgumentsByName = typeArguments.associateBy { it.name }
         }
 
-        initialized = true
         flush()
     }
 
@@ -489,7 +615,7 @@ internal class ResolvableTypeImpl<T>(
 
         for (i in typeArguments.indices) {
             val thisTypeArgument = typeArguments[i]
-            val otherTypeArgument = other.typeArguments[i]
+            val otherTypeArgument = other.getTypeArgumentOrFail(rawClass, i)
 
             if (otherTypeArgument.isAll) {
                 continue
