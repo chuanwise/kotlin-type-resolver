@@ -172,12 +172,12 @@ internal class ResolvableFunctionImpl<T>(
         typeArgumentsByName = typeArguments.associateBy { it.name }
 
         rawReturnType = rawFunction.returnType
-        returnType = typeResolver.resolveByOuterType(ownerType, rawReturnType, ignored = typeArgumentsByName.keys)
+        returnType = typeResolver.infer(ownerType, rawReturnType, ignored = typeArgumentsByName.keys)
 
         parameters = rawFunction.parameters.map {
             ResolvableFunctionParameterImpl(
                 it.name, it.index, it,
-                typeResolver.resolveByOuterType(ownerType, it.type, ignored = typeArgumentsByName.keys)
+                typeResolver.infer(ownerType, it.type, ignored = typeArgumentsByName.keys)
             )
         }
 

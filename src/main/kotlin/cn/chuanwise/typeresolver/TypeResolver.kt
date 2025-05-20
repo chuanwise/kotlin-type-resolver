@@ -24,10 +24,26 @@ import kotlin.reflect.KClass
 import kotlin.reflect.KType
 import kotlin.reflect.KTypeParameter
 
+/**
+ * Type resolver, actually a type cache. 
+ *
+ * @author Chuanwise
+ */
 interface TypeResolver {
+    /**
+     * Resolve given kotlin type to a [ResolvableType].
+     *
+     * @param type kotlin type
+     * @return a [ResolvableType] that represents the given kotlin type
+     */
     fun resolve(type: KType): ResolvableType<*>
 }
 
+/**
+ * Create a new [TypeResolver] instance.
+ *
+ * @return a new [TypeResolver] instance
+ */
 fun TypeResolver(): TypeResolver = TypeResolverImpl()
 
 fun <T> TypeResolver.resolve(rawClass: KClass<T & Any>, nullable: Boolean = false): ResolvableType<T> {
@@ -45,13 +61,6 @@ inline fun <reified T> TypeResolver.buildType(
     block: ResolvableTypeBuilder<T>.() -> Unit
 ): ResolvableType<T> {
     return buildType(T::class as KClass<T & Any>, block)
-}
-
-fun ResolvableType<*>?.findTypeArgument(name: String): ResolvableTypeArgument? {
-    generateSequence(this) { it.ownerType }.forEach { type ->
-        type.typeArgumentsByName[name]?.let { return it }
-    }
-    return null
 }
 
 private fun ResolvableType<*>?.promptByOuterType(type: ResolvableType<*>, typeResolver: TypeResolver) {
@@ -76,7 +85,14 @@ private fun ResolvableType<*>?.promptByOuterType(type: ResolvableType<*>, typeRe
     }
 }
 
-fun TypeResolver.resolveByOuterType(root: ResolvableType<*>?, type: KType, ignored: Set<String> = emptySet()) : ResolvableType<*>? {
+private fun ResolvableType<*>?.getTypeArgument(name: String): ResolvableTypeArgument? {
+    generateSequence(this) { it.ownerType }.forEach { type ->
+        type.typeArgumentsByName[name]?.let { return it }
+    }
+    return null
+}
+
+fun TypeResolver.infer(root: ResolvableType<*>?, type: KType, ignored: Set<String> = emptySet()) : ResolvableType<*>? {
     return when (val classifier = type.classifier) {
         is KTypeParameter -> {
             // 如果是在本函数上定义的类型参数，就无法解析。
@@ -85,17 +101,17 @@ fun TypeResolver.resolveByOuterType(root: ResolvableType<*>?, type: KType, ignor
             }
 
             // 否则在外部类里找这个参数。
-            return root.findTypeArgument(classifier.name)?.type
+            return root.getTypeArgument(classifier.name)?.type
         }
         is KClass<*> -> resolve(type).apply {
-            root.promptByOuterType(this, this@resolveByOuterType)
+            root.promptByOuterType(this, this@infer)
         }
         else -> error("Unsupported type classifier: $classifier")
     }
 }
 
 @Suppress("UNCHECKED_CAST")
-fun TypeResolver.resolveByOuterType(root: ResolvableType<*>?, type: Type, ignored: Set<String> = emptySet()) : ResolvableType<*>? {
+fun TypeResolver.infer(root: ResolvableType<*>?, type: Type, ignored: Set<String> = emptySet()) : ResolvableType<*>? {
     return when (type) {
         is TypeVariable<*> -> {
             if (type.name in ignored) {
@@ -113,38 +129,37 @@ fun TypeResolver.resolveByOuterType(root: ResolvableType<*>?, type: Type, ignore
         }
         is ParameterizedType -> {
             resolve((type.rawType as Class<*>).kotlin as KClass<Any>).apply {
-                root.promptByOuterType(this, this@resolveByOuterType)
+                root.promptByOuterType(this, this@infer)
             }
         }
         is Class<*> -> {
             resolve(type.kotlin as KClass<Any>).apply {
-                root.promptByOuterType(this, this@resolveByOuterType)
+                root.promptByOuterType(this, this@infer)
             }
         }
         else -> error("Unsupported type: $type")
     }
 }
 
-
-internal class TypeResolverImpl : TypeResolver {
-    private val typeCache = ConcurrentHashMap<KType, ResolvableType<*>>()
-
+internal class TypeResolverImpl(
+    private val cache: MutableMap<KType, ResolvableType<*>> = ConcurrentHashMap<KType, ResolvableType<*>>()
+): TypeResolver {
     internal fun getTypeCache(type: KType): ResolvableType<*>? {
-        return typeCache[type]
+        return cache[type]
     }
 
     internal fun addTypeCache(type: ResolvableType<*>) {
-        typeCache[type.rawType] = type
+        cache[type.rawType] = type
     }
 
     override fun resolve(type: KType): ResolvableType<*> {
-        typeCache[type]?.let { return it }
+        cache[type]?.let { return it }
 
         return ResolvableTypeBuilder(type, this)
             .build()
             .apply {
                 if (isResolved) {
-                    typeCache[type] = this
+                    cache[type] = this
                 }
             }
     }

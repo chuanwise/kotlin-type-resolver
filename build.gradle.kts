@@ -20,7 +20,7 @@ plugins {
 }
 
 group = "cn.chuanwise"
-version = "0.1.0"
+version = "0.1.0-SNAPSHOT"
 
 repositories {
     mavenCentral()
@@ -35,6 +35,18 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+tasks.register("updateReadmeVersion") {
+    val file = File("README.md")
+    val pattern = "\${version}"
+    val replacement = version.toString()
+
+    file.writeText(file.readText().replace(pattern, replacement))
+}
+
+tasks.publish {
+    dependsOn("updateReadmeVersion")
 }
 
 publishing {

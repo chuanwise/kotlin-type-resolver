@@ -179,7 +179,7 @@ class ResolvableTypeTest {
 
         val typeResolver = TypeResolver()
         val putFun = mutableMap.rawClass.java.methods.single { it.name == "put" }
-        val putReturnType = typeResolver.resolveByOuterType(mutableMap, putFun.genericReturnType)
+        val putReturnType = typeResolver.infer(mutableMap, putFun.genericReturnType)
 
         assertEquals(ResolvableType<String>(), putReturnType)
     }
@@ -190,7 +190,7 @@ class ResolvableTypeTest {
 
         val typeResolver = TypeResolver()
         val putFun = mutableMap.rawClass.java.methods.single { it.name == "put" }
-        val putReturnType = typeResolver.resolveByOuterType(mutableMap, putFun.genericReturnType)
+        val putReturnType = typeResolver.infer(mutableMap, putFun.genericReturnType)
 
         assertEquals(ResolvableType<Map<List<Pair<Float, URI>>, Int>>(), putReturnType)
     }

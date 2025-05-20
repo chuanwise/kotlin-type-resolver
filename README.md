@@ -8,15 +8,13 @@ Add following dependency to your `build.gradle.kts`:
 
 ```kts
 repositories {
-    maven("https://nexus.chuanwise.cn/repository/maven-releases")
+    maven("https://nexus.chuanwise.cn/repository/maven-public/")
 }
 
 dependencies {
-    implementation("cn.chuanwise:kotlin-type-resolver:$version")
+    implementation("cn.chuanwise:kotlin-type-resolver:0.1.0-SNAPSHOT")
 }
 ```
-
-where `$version` can be seen in the release page.
 
 ## Getting Started
 

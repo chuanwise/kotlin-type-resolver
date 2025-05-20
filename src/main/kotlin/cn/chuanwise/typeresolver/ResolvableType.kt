@@ -198,14 +198,14 @@ inline fun <reified T> ResolvableType() : ResolvableType<T> {
 inline fun <reified T> ResolvableType<*>.getTypeArgument(index: Int): ResolvableTypeArgument? {
     return getTypeArgument(T::class, index)
 }
-inline fun <reified T> ResolvableType<*>.getTypeArgumentOrFail(index: Int): ResolvableTypeArgument? {
+inline fun <reified T> ResolvableType<*>.getTypeArgumentOrFail(index: Int): ResolvableTypeArgument {
     return getTypeArgumentOrFail(T::class, index)
 }
 
 inline fun <reified T> ResolvableType<*>.getTypeArgument(name: String): ResolvableTypeArgument? {
     return getTypeArgument(T::class, name)
 }
-inline fun <reified T> ResolvableType<*>.getTypeArgumentOrFail(name: String): ResolvableTypeArgument? {
+inline fun <reified T> ResolvableType<*>.getTypeArgumentOrFail(name: String): ResolvableTypeArgument {
     return getTypeArgumentOrFail(T::class, name)
 }
 
@@ -509,7 +509,7 @@ internal class ResolvableTypeImpl<T>(
                 .map {
                     ResolvablePropertyImpl(
                         it.name, it, it.returnType,
-                        builderResolver.resolveByOuterType(this, it.returnType)
+                        builderResolver.infer(this, it.returnType)
                     )
                 }
         }
